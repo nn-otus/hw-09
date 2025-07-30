@@ -127,9 +127,11 @@ Jul 30 19:56:45 u24srv09 systemd[1]: Started watchlog.timer - Run watchlog scrip
 root@u24srv09:~#
 ...
 root@u24srv09:~# journalctl -u watchlog.service -n 4
-Jul 30 19:51:10 u24srv09 systemd[1]: Starting watchlog.service - My watchlog service...
-Jul 30 19:51:10 u24srv09 root[11232]: Wed Jul 30 19:51:10 UTC 2025: I found word ALERT, Master!
-Jul 30 19:51:10 u24srv09 systemd[1]: watchlog.service: Deactivated successfully.
-Jul 30 19:51:10 u24srv09 systemd[1]: Finished watchlog.service - My watchlog service.
+Jul 30 20:41:37 u24srv09 systemd[1]: Starting watchlog.service - My watchlog service...
+Jul 30 20:41:37 u24srv09 root[1903]: Wed Jul 30 20:41:37 UTC 2025: I found word ALERT, Master!
+Jul 30 20:41:37 u24srv09 systemd[1]: watchlog.service: Deactivated successfully.
+Jul 30 20:41:37 u24srv09 systemd[1]: Finished watchlog.service - My watchlog service.
+root@u24srv09:~#
+
 ```
 ### time-out 
