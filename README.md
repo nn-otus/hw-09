@@ -39,7 +39,7 @@ echo "Fin"
 root@u24srv09:~#
 root@u24srv09:~# chmod +x fill_watchlog.sh
 root@u24srv09:~# ./fill_watchlog.sh
-root@u24srv09:~# tail -n1 /var/log/watchlog.log || wc
+root@u24srv09:~# tail -n1 /var/log/watchlog.log 
 COt9YaDwnTED2WYxtL1U ALERT
 root@u24srv09:~#
 ```
