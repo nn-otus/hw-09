@@ -30,10 +30,10 @@ root@u24srv09:~# nano fill_watchlog.sh
 root@u24srv09:~# cat !$
 cat fill_watchlog.sh
 #!/bin/bash
-
+WORD="ALERT"
 for ((i=1; i<=20; i++)); do
     random_string=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 20)
-  echo "$random_string ALERT" >> /var/log/watchlog.log
+  echo "$random_string $WORD" >> /var/log/watchlog.log
 done
 echo "Fin"
 root@u24srv09:~#
