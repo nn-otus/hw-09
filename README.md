@@ -135,3 +135,212 @@ root@u24srv09:~#
 
 ```
 ### time-out 
+##### Установить spawn-fcgi и создать unit-файл (spawn-fcgi.sevice) с помощью переделки init-скрипта
+
+Устанавливаем spawn-fcgi и необходимые для него пакеты
+```
+root@u24srv09:~# apt install spawn-fcgi php php-cgi php-cli  apache2 libapache2-mod-fcgid -y
+...
+Created symlink /etc/systemd/system/multi-user.target.wants/apache2.service → /usr/lib/systemd/system/apache2.service.
+Created symlink /etc/systemd/system/multi-user.target.wants/apache-htcacheclean.service → /usr/lib/systemd/system/apache-htcacheclean.service.
+...
+```
+ Создаем файл с настройками для будущего сервиса в файле /etc/spawn-fcgi/fcgi.conf
+```
+cat > /etc/spawn-fcgi/fcgi.conf
+# You must set some working options before the "spawn-fcgi" service will work.
+# If SOCKET points to a file, then this file is cleaned up by the init script.
+#
+# See spawn-fcgi(1) for all possible options.
+#
+# Example :
+SOCKET=/var/run/php-fcgi.sock
+OPTIONS="-u www-data -g www-data -s $SOCKET -S -M 0600 -C 32 -F 1 -- /usr/bin/php-cgi"
+```
+Создаем unit-file
+```
+cat /etc/systemd/system/spawn-fcgi.service
+[Unit]
+Description=Spawn-fcgi startup service by Otus
+After=network.target
+
+[Service]
+Type=simple
+PIDFile=/var/run/spawn-fcgi.pid
+EnvironmentFile=/etc/spawn-fcgi/fcgi.conf
+ExecStart=/usr/bin/spawn-fcgi -n $OPTIONS
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+```
+Убеждаемся, что все успешно работает
+```
+root@u24srv09:~# systemctl start spawn-fcgi
+root@u24srv09:~# systemctl status spawn-fcgi
+● spawn-fcgi.service - Spawn-fcgi startup service by Otus
+     Loaded: loaded (/etc/systemd/system/spawn-fcgi.service; disabled; preset:
+enabled)
+     Active: active (running) since Sat 2025-08-02 10:22:42 UTC; 7s ago
+   Main PID: 10045 (php-cgi)
+      Tasks: 33 (limit: 2211)
+     Memory: 14.5M (peak: 14.7M)
+        CPU: 58ms
+     CGroup: /system.slice/spawn-fcgi.service
+             ├─10045 /usr/bin/php-cgi
+             ├─10046 /usr/bin/php-cgi
+             ├─10047 /usr/bin/php-cgi
+```
+##### Доработка unit-файла Nginx (nginx.service) для запуска нескольких инстансов сервера с разными конфигурационными файлами одновременно
+
+Установим Nginx из стандартного репозитория
+```
+root@u24srv09:~# apt install nginx -y
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+...
+Created symlink /etc/systemd/system/multi-user.target.wants/nginx.service → /usr/lib/systemd/system/nginx.service.
+Could not execute systemctl:  at /usr/bin/deb-systemd-invoke line 148.
+Setting up nginx (1.24.0-2ubuntu7.4) ...
+Not attempting to start NGINX, port 80 is already in use.
+```
+
+Для запуска нескольких экземпляров сервиса модифицируем исходный service для использования различной конфигурации, а также PID-файлов. Для этого создадим новый Unit для работы с шаблонами (/etc/systemd/system/nginx@.service)
+```
+root@u24srv09:~# touch /etc/systemd/system/nginx@.service
+root@u24srv09:~# nano !$
+nano /etc/systemd/system/nginx@.service
+root@u24srv09:~# cat !$
+cat /etc/systemd/system/nginx@.service
+# Stop dance for nginx
+# =======================
+#
+# ExecStop sends SIGSTOP (graceful stop) to the nginx process.
+# If, after 5s (--retry QUIT/5) nginx is still running, systemd takes control
+# and sends SIGTERM (fast shutdown) to the main process.
+# After another 5s (TimeoutStopSec=5), and if nginx is alive, systemd sends
+# SIGKILL to all the remaining processes in the process group (KillMode=mixed).
+#
+# nginx signals reference doc:
+# http://nginx.org/en/docs/control.html
+#
+[Unit]
+Description=A high performance web server and a reverse proxy server
+Documentation=man:nginx(8)
+After=network.target nss-lookup.target
+
+[Service]
+Type=forking
+PIDFile=/run/nginx-%I.pid
+ExecStartPre=/usr/sbin/nginx -t -c /etc/nginx/nginx-%I.conf -q -g 'daemon on; master_process on;'
+ExecStart=/usr/sbin/nginx -c /etc/nginx/nginx-%I.conf -g 'daemon on; master_process on;'
+ExecReload=/usr/sbin/nginx -c /etc/nginx/nginx-%I.conf -g 'daemon on; master_process on;' -s reload
+ExecStop=-/sbin/start-stop-daemon --quiet --stop --retry QUIT/5 --pidfile /run/nginx-%I.pid
+TimeoutStopSec=5
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+root@u24srv09:~#
+```
+Далее необходимо создать два файла конфигурации (/etc/nginx/nginx-first.conf, /etc/nginx/nginx-second.conf). Их можно сформировать из стандартного конфига /etc/nginx/nginx.conf, с модификацией путей до PID-файлов и разделением по портам
+```
+root@u24srv09:~# cat /etc/nginx/nginx-first.conf
+user www-data;
+worker_processes auto;
+pid /run/nginx-first.pid;
+error_log /var/log/nginx/error.log;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+        worker_connections 768;
+        # multi_accept on;
+}
+
+http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3; # Dropping SSLv3, ref: POODLE
+        ssl_prefer_server_ciphers on;
+        access_log /var/log/nginx/access.log;
+        gzip on;
+
+        server {
+                listen 9001;
+        }
+
+        include /etc/nginx/conf.d/*.conf;
+        # include /etc/nginx/sites-enabled/*; # commented by NN
+}
+```
+### Проверка работы сервисов
+Если мы видим две группы процессов Nginx, то всё в порядке. Если сервисы не стартуют, смотрим их статус, ищем ошибки, проверяем ошибки в /var/log/nginx/error.log, а также в journalctl -u nginx@first.
+
++ systemctl status
+
+```
+root@u24srv09:~# systemctl status nginx@first
+● nginx@first.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (/etc/systemd/system/nginx@.service; disabled; preset: enabled
+)
+     Active: active (running) since Sat 2025-08-02 10:59:55 UTC; 6s ago
+       Docs: man:nginx(8)
+    Process: 10486 ExecStartPre=/usr/sbin/nginx -t -c /etc/nginx/nginx-first.conf -q -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 10487 ExecStart=/usr/sbin/nginx -c /etc/nginx/nginx-first.conf -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+   Main PID: 10490 (nginx)
+      Tasks: 3 (limit: 2211)
+     Memory: 2.3M (peak: 2.7M)
+        CPU: 25ms
+     CGroup: /system.slice/system-nginx.slice/nginx@first.service
+             ├─10490 "nginx: master process /usr/sbin/nginx -c /etc/nginx/nginx-first.conf -g daemon on; master_process on;"
+             ├─10491 "nginx: worker process"
+             └─10492 "nginx: worker process"
+root@u24srv09:~# systemctl status nginx@second
+● nginx@second.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (/etc/systemd/system/nginx@.service; disabled; preset: enabled
+)
+     Active: active (running) since Sat 2025-08-02 11:00:24 UTC; 8s ago
+       Docs: man:nginx(8)
+    Process: 10501 ExecStartPre=/usr/sbin/nginx -t -c /etc/nginx/nginx-second.conf -q -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 10502 ExecStart=/usr/sbin/nginx -c /etc/nginx/nginx-second.conf -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+   Main PID: 10504 (nginx)
+      Tasks: 3 (limit: 2211)
+     Memory: 2.4M (peak: 2.5M)
+        CPU: 27ms
+     CGroup: /system.slice/system-nginx.slice/nginx@second.service
+             ├─10504 "nginx: master process /usr/sbin/nginx -c /etc/nginx/nginx-second.conf -g daemon on; master_process on;"
+             ├─10505 "nginx: worker process"
+             └─10506 "nginx: worker process"
+```
++ Какие порты прослушиваются
+```
+root@u24srv09:~# ss -4lnpt | grep nginx
+LISTEN 0      511          0.0.0.0:9001      0.0.0.0:*    users:(("nginx",pid=10492,fd=5),("nginx",pid=10491,fd=5),("nginx",pid=10490,fd=5))
+LISTEN 0      511          0.0.0.0:9002      0.0.0.0:*    users:(("nginx",pid=10506,fd=5),("nginx",pid=10505,fd=5),("nginx",pid=10504,fd=5))
+root@u24srv09:~#
+```
++ Список процессов
+```
+root@u24srv09:~# ps afx | grep nginx-
+  10520 pts/2    S+     0:00  |       \_ grep --color=auto nginx-
+  10490 ?        Ss     0:00 nginx: master process /usr/sbin/nginx -c /etc/nginx/nginx-first.conf -g daemon on; master_process on;
+  10504 ?        Ss     0:00 nginx: master process /usr/sbin/nginx -c /etc/nginx/nginx-second.conf -g daemon on; master_process on;
+root@u24srv09:~#
+```
++ Доступность сайта
+```
+$ curl -I http://otus-hw-09.ru:9002
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Sat, 02 Aug 2025 11:30:56 GMT
+Content-Type: text/html
+Content-Length: 615
+Last-Modified: Tue, 11 Apr 2023 01:45:34 GMT
+Connection: keep-alive
+ETag: "6434bbbe-267"
+Accept-Ranges: bytes
+```
+## ДЗ-09 выполнено
+
