@@ -5,9 +5,9 @@
 2. Установить spawn-fcgi и создать unit-файл (spawn-fcgi.sevice) с помощью переделки init-скрипта (https://gist.github.com/cea2k/1318020).
 3. Доработать unit-файл Nginx (nginx.service) для запуска нескольких инстансов сервера с разными конфигурационными файлами одновременно.  
 
-##### Инструкция по выполнению домашнего задания
-Написать service, который будет раз в 30 секунд мониторить лог на предмет наличия ключевого слова  
-Для начала создаём файл с конфигурацией для сервиса в директории /etc/default - из неё сервис будет брать необходимые переменные.  
+## 1. Написать service, который будет раз в 30 секунд мониторить лог на предмет наличия ключевого слова
+  
++ Для начала создаём файл с конфигурацией для сервиса в директории /etc/default - из неё сервис будет брать необходимые переменные.  
 
 ```
 root@u24srv09:~# cat /etc/default/watchlog
@@ -23,8 +23,7 @@ WORD="ALERT"
 LOG=/var/log/watchlog.log
 root@u24srv09:~#
 ```
-Затем создаем /var/log/watchlog.log и пишем туда строки на своё усмотрение,
-плюс ключевое слово ‘ALERT’
++ Затем создаем /var/log/watchlog.log и пишем туда строки на своё усмотрение,плюс ключевое слово ‘ALERT’
 ```
 root@u24srv09:~# nano fill_watchlog.sh
 root@u24srv09:~# cat !$
@@ -43,7 +42,7 @@ root@u24srv09:~# tail -n1 /var/log/watchlog.log
 COt9YaDwnTED2WYxtL1U ALERT
 root@u24srv09:~#
 ```
-##### Создадим скрипт:
++ Создадим скрипт:
 ```
 root@u24srv09:~# nano /opt/watchlog.sh
 root@u24srv09:~# cat !$
@@ -64,7 +63,7 @@ root@u24srv09:~#
 root@u24srv09:~# chmod +x /opt/watchlog.sh
 root@u24srv09:~#
 ```
-##### Создадим юнит для сервиса
++ Создадим юнит для сервиса
 ```
 root@u24srv09:~# nano /opt/watchlog.sh
 root@u24srv09:~# cat !$
@@ -94,7 +93,7 @@ EnvironmentFile=/etc/default/watchlog
 ExecStart=/opt/watchlog.sh $WORD $LOG
 root@u24srv09:~#
 ```
-##### Создадим юнит для таймера
++ Создадим юнит для таймера
 ```
 root@u24srv09:~# cat !$
 cat /etc/systemd/system/watchlog.timer
@@ -110,7 +109,7 @@ Unit=watchlog.service
 WantedBy=multi-user.target
 root@u24srv09:~#
 ```
-Затем достаточно только запустить timer
++ Затем достаточно только запустить timer
 ```
 root@u24srv09:~# systemctl start watchlog.timer
 root@u24srv09:~# systemctl status watchlog.timer
@@ -134,10 +133,10 @@ Jul 30 20:41:37 u24srv09 systemd[1]: Finished watchlog.service - My watchlog ser
 root@u24srv09:~#
 
 ```
-### time-out 
-##### Установить spawn-fcgi и создать unit-файл (spawn-fcgi.sevice) с помощью переделки init-скрипта
 
-Устанавливаем spawn-fcgi и необходимые для него пакеты
+## 2. Установить spawn-fcgi и создать unit-файл (spawn-fcgi.sevice) с помощью переделки init-скрипта
+
++ Устанавливаем spawn-fcgi и необходимые для него пакеты
 ```
 root@u24srv09:~# apt install spawn-fcgi php php-cgi php-cli  apache2 libapache2-mod-fcgid -y
 ...
@@ -145,7 +144,7 @@ Created symlink /etc/systemd/system/multi-user.target.wants/apache2.service → 
 Created symlink /etc/systemd/system/multi-user.target.wants/apache-htcacheclean.service → /usr/lib/systemd/system/apache-htcacheclean.service.
 ...
 ```
- Создаем файл с настройками для будущего сервиса в файле /etc/spawn-fcgi/fcgi.conf
++ Создаем файл с настройками для будущего сервиса в файле /etc/spawn-fcgi/fcgi.conf
 ```
 cat > /etc/spawn-fcgi/fcgi.conf
 # You must set some working options before the "spawn-fcgi" service will work.
@@ -157,7 +156,7 @@ cat > /etc/spawn-fcgi/fcgi.conf
 SOCKET=/var/run/php-fcgi.sock
 OPTIONS="-u www-data -g www-data -s $SOCKET -S -M 0600 -C 32 -F 1 -- /usr/bin/php-cgi"
 ```
-Создаем unit-file
++ Создаем unit-file
 ```
 cat /etc/systemd/system/spawn-fcgi.service
 [Unit]
@@ -174,7 +173,7 @@ KillMode=process
 [Install]
 WantedBy=multi-user.target
 ```
-Убеждаемся, что все успешно работает
++ Убеждаемся, что все успешно работает
 ```
 root@u24srv09:~# systemctl start spawn-fcgi
 root@u24srv09:~# systemctl status spawn-fcgi
@@ -191,9 +190,9 @@ enabled)
              ├─10046 /usr/bin/php-cgi
              ├─10047 /usr/bin/php-cgi
 ```
-##### Доработка unit-файла Nginx (nginx.service) для запуска нескольких инстансов сервера с разными конфигурационными файлами одновременно
+## 3. Доработка unit-файла Nginx (nginx.service) для запуска нескольких инстансов сервера с разными конфигурационными файлами одновременно
 
-Установим Nginx из стандартного репозитория
++ Установим Nginx из стандартного репозитория
 ```
 root@u24srv09:~# apt install nginx -y
 Reading package lists... Done
@@ -206,7 +205,7 @@ Setting up nginx (1.24.0-2ubuntu7.4) ...
 Not attempting to start NGINX, port 80 is already in use.
 ```
 
-Для запуска нескольких экземпляров сервиса модифицируем исходный service для использования различной конфигурации, а также PID-файлов. Для этого создадим новый Unit для работы с шаблонами (/etc/systemd/system/nginx@.service)
++ Для запуска нескольких экземпляров сервиса модифицируем исходный service для использования различной конфигурации, а также PID-файлов. Для этого создадим новый Unit для работы с шаблонами (/etc/systemd/system/nginx@.service)
 ```
 root@u24srv09:~# touch /etc/systemd/system/nginx@.service
 root@u24srv09:~# nano !$
@@ -244,7 +243,7 @@ KillMode=mixed
 WantedBy=multi-user.target
 root@u24srv09:~#
 ```
-Далее необходимо создать два файла конфигурации (/etc/nginx/nginx-first.conf, /etc/nginx/nginx-second.conf). Их можно сформировать из стандартного конфига /etc/nginx/nginx.conf, с модификацией путей до PID-файлов и разделением по портам
++ Далее необходимо создать два файла конфигурации (/etc/nginx/nginx-first.conf, /etc/nginx/nginx-second.conf). Их можно сформировать из стандартного конфига /etc/nginx/nginx.conf, с модификацией путей до PID-файлов и разделением по портам
 ```
 root@u24srv09:~# cat /etc/nginx/nginx-first.conf
 user www-data;
